@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use super::{
     AnnotatedPosting, BookedOrUnbookedPosting, BookingError, BookingTypes, CostSpec, Interpolated,
-    Number, PostingBookingError, PostingCost, PostingCosts, PostingSpec, Price, PriceSpec,
+    Number, PostingBookingError, PostingCost, PostingCosts, PostingSpec, Price, PriceSpec, Sign,
     Tolerance, TransactionBookingError, tolerance_residual,
 };
 
@@ -122,27 +122,37 @@ where
             _,
         ) => {
             match (annotated.cost_currency, per_unit) {
-                (Some(cost_currency), Some(conversion)) => Ok((
-                    Interpolated {
-                        posting: annotated.posting,
-                        idx: annotated.idx,
-                        units,
-                        currency,
-                        cost: Some(PostingCosts {
-                            cost_currency,
-                            adjustments: vec![PostingCost {
-                                date: cost.date().unwrap_or(date),
+                (Some(cost_currency), Some(conversion)) => {
+                    if conversion.per_unit.sign() != Some(Sign::Negative) {
+                        Ok((
+                            Interpolated {
+                                posting: annotated.posting,
+                                idx: annotated.idx,
                                 units,
-                                per_unit: conversion.per_unit,
-                                total: conversion.total,
-                                label: cost.label(),
-                                merge: cost.merge(),
-                            }],
-                        }),
-                        price: None, // ignored in favour of cost
-                    },
-                    false,
-                )),
+                                currency,
+                                cost: Some(PostingCosts {
+                                    cost_currency,
+                                    adjustments: vec![PostingCost {
+                                        date: cost.date().unwrap_or(date),
+                                        units,
+                                        per_unit: conversion.per_unit,
+                                        total: conversion.total,
+                                        label: cost.label(),
+                                        merge: cost.merge(),
+                                    }],
+                                }),
+                                price: None, // ignored in favour of cost
+                            },
+                            false,
+                        ))
+                    } else {
+                        tracing::error!("InferredInvalidCostPerUnit {:?}", &conversion);
+                        Err(BookingError::Posting(
+                            annotated.idx,
+                            PostingBookingError::InferredNegativeCostPerUnit,
+                        ))
+                    }
+                }
                 (None, Some(_)) => Err(BookingError::Posting(
                     annotated.idx,
                     PostingBookingError::CannotInferCurrency,
@@ -161,21 +171,31 @@ where
         (Some(UnitsAndConversion { units, conversion }), Some(currency), None, Some(_price)) => {
             // price without cost
             match (conversion, annotated.price_currency) {
-                (Some(conversion), Some(price_currency)) => Ok((
-                    Interpolated {
-                        posting: annotated.posting,
-                        idx: annotated.idx,
-                        units,
-                        currency,
-                        cost: None,
-                        price: Some(Price {
-                            per_unit: conversion.per_unit,
-                            total: Some(conversion.total),
-                            currency: price_currency,
-                        }),
-                    },
-                    false,
-                )),
+                (Some(conversion), Some(price_currency)) => {
+                    if conversion.per_unit.sign() != Some(Sign::Negative) {
+                        Ok((
+                            Interpolated {
+                                posting: annotated.posting,
+                                idx: annotated.idx,
+                                units,
+                                currency,
+                                cost: None,
+                                price: Some(Price {
+                                    per_unit: conversion.per_unit,
+                                    total: Some(conversion.total),
+                                    currency: price_currency,
+                                }),
+                            },
+                            false,
+                        ))
+                    } else {
+                        tracing::error!("InferredInvalidPricePerUnit {:?}", &conversion);
+                        Err(BookingError::Posting(
+                            annotated.idx,
+                            PostingBookingError::InferredNegativePricePerUnit,
+                        ))
+                    }
+                }
                 (None, Some(_)) => Err(BookingError::Posting(
                     annotated.idx,
                     PostingBookingError::CannotInferPricePerUnit,
@@ -344,7 +364,7 @@ where
     B: BookingTypes,
     T: Tolerance<Types = B>,
 {
-    let per_unit = total.checked_div(units).map(|per_unit| per_unit.abs());
+    let per_unit = total.checked_div(units);
     // TODO scale according to tolerance
     Some(UnitsAndConversion {
         units,

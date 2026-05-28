@@ -71,6 +71,8 @@ pub enum PostingBookingError {
     CannotInferPrice,
     NotEnoughLotsToReduce,
     NoPositionMatches,
+    InferredNegativeCostPerUnit,
+    InferredNegativePricePerUnit,
 }
 
 impl Display for PostingBookingError {
@@ -91,6 +93,8 @@ impl Display for PostingBookingError {
             CannotInferPrice => f.write_str("cannot infer price"),
             NotEnoughLotsToReduce => f.write_str("not enough lots to reduce"),
             NoPositionMatches => f.write_str("no position matches"),
+            InferredNegativeCostPerUnit => f.write_str("inferred negative cost per-unit"),
+            InferredNegativePricePerUnit => f.write_str("inferred negative price per-unit"),
         }
     }
 }
