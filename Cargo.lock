@@ -60,25 +60,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
-name = "beancount-parser-lima"
-version = "0.16.3"
-source = "git+https://github.com/srod/beancount-parser-lima?rev=cac6939619536557c72a7fe91a346eb69199f3c5#cac6939619536557c72a7fe91a346eb69199f3c5"
-dependencies = [
- "ariadne",
- "chumsky",
- "either",
- "glob",
- "itertools",
- "lazy_format",
- "logos",
- "rust_decimal",
- "strum",
- "strum_macros",
- "time",
- "unescaper",
-]
-
-[[package]]
 name = "bitvec"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -368,17 +349,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "libc"
-version = "0.2.184"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48f5d2a454e16a5ea0f4ced81bd44e4cfc7bd3a507b61887c99fd3538b28e4af"
-
-[[package]]
-name = "limabean-booking"
+name = "ledgermill-beancount-booking"
 version = "0.10.5"
 dependencies = [
- "beancount-parser-lima",
  "hashbrown 0.15.5",
+ "ledgermill-beancount-parser",
  "rstest",
  "rust_decimal",
  "rust_decimal_macros",
@@ -387,6 +362,31 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "ledgermill-beancount-parser"
+version = "0.16.3"
+source = "git+https://github.com/srod/beancount-parser-lima?rev=266980b6149d7d229c45b181141321f588ec2c5b#266980b6149d7d229c45b181141321f588ec2c5b"
+dependencies = [
+ "ariadne",
+ "chumsky",
+ "either",
+ "glob",
+ "itertools",
+ "lazy_format",
+ "logos",
+ "rust_decimal",
+ "strum",
+ "strum_macros",
+ "time",
+ "unescaper",
+]
+
+[[package]]
+name = "libc"
+version = "0.2.184"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48f5d2a454e16a5ea0f4ced81bd44e4cfc7bd3a507b61887c99fd3538b28e4af"
 
 [[package]]
 name = "log"

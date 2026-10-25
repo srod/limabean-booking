@@ -1,15 +1,19 @@
 [package]
-name = "limabean-booking"
+name = "ledgermill-beancount-booking"
 version = "0.10.5"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Beancount booking algorithms for limabean"
-homepage = "https://github.com/tesujimath/limabean"
-repository = "https://github.com/tesujimath/limabean"
+description = "Beancount booking algorithms: a fork of limabean-booking that depends on ledgermill-beancount-parser, published for ledgermill"
+homepage = "https://github.com/srod/limabean-booking"
+repository = "https://github.com/srod/limabean-booking"
 readme = "README.md"
 
+# Keep the upstream crate name in code, so the fork differs from upstream only here.
+[lib]
+name = "limabean_booking"
+
 [dependencies]
-beancount-parser-lima = { git = "https://github.com/srod/beancount-parser-lima", rev = "cac6939619536557c72a7fe91a346eb69199f3c5", version = "0.16", optional = true }
+beancount-parser-lima = { package = "ledgermill-beancount-parser", git = "https://github.com/srod/beancount-parser-lima", rev = "266980b6149d7d229c45b181141321f588ec2c5b", version = "0.16.3", optional = true }
 rust_decimal = { version = "1.37", optional = true }
 hashbrown = { version = "0.15" }
 strum_macros = { version = "0.27" }
@@ -17,7 +21,7 @@ time = { version = "0.3" }
 tracing = { version = "0.1" }
 
 [dev-dependencies]
-beancount-parser-lima = { git = "https://github.com/srod/beancount-parser-lima", rev = "cac6939619536557c72a7fe91a346eb69199f3c5", version = "0.16" }
+beancount-parser-lima = { package = "ledgermill-beancount-parser", git = "https://github.com/srod/beancount-parser-lima", rev = "266980b6149d7d229c45b181141321f588ec2c5b", version = "0.16.3" }
 rstest = { version = "0.26" }
 rust_decimal_macros = { version = "1.37" }
 time = { version = "0.3", features = ["macros"] }
