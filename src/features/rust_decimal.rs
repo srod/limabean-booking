@@ -25,6 +25,18 @@ impl Number for rust_decimal::Decimal {
         rust_decimal::Decimal::new(m, scale)
     }
 
+    fn checked_add(self, other: Self) -> Option<Self> {
+        rust_decimal::Decimal::checked_add(self, other)
+    }
+
+    fn checked_sub(self, other: Self) -> Option<Self> {
+        rust_decimal::Decimal::checked_sub(self, other)
+    }
+
+    fn checked_mul(self, other: Self) -> Option<Self> {
+        rust_decimal::Decimal::checked_mul(self, other)
+    }
+
     fn checked_div(self, other: Self) -> Option<Self> {
         self.checked_div(other)
     }

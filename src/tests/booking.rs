@@ -1,5 +1,8 @@
 #![allow(non_snake_case)]
-use super::{Booking, BookingError, PostingBookingError, booking_test_err, booking_test_ok};
+use super::{
+    Booking, BookingError, PostingBookingError, TransactionBookingError, booking_test_err,
+    booking_test_ok,
+};
 
 // These tests were lifted from:
 // https://github.com/beancount/beancount/blob/master/beancount/parser/booking_full_test.py
@@ -1522,5 +1525,46 @@ fn test_reduce__date_spec__depleted_inventory() {
 "#,
         Booking::Strict,
         BookingError::Posting(1, PostingBookingError::NoPositionMatches),
+    );
+}
+
+#[test]
+fn test_overflow__cost_weight() {
+    booking_test_err(
+        r#"
+2024-01-01 * #apply
+  Assets:Account     1000000000000000 HOOL { 1000000000000000 USD }
+  Income:Other
+"#,
+        Booking::Strict,
+        BookingError::Transaction(TransactionBookingError::Overflow),
+    );
+}
+
+#[test]
+fn test_overflow__price_weight() {
+    booking_test_err(
+        r#"
+2024-01-01 * #apply
+  Assets:Account     1000000000000000 HOOL @ 1000000000000000 USD
+  Income:Other
+"#,
+        Booking::Strict,
+        BookingError::Transaction(TransactionBookingError::Overflow),
+    );
+}
+
+#[test]
+fn test_overflow__sum_of_weights() {
+    // each weight fits in a Decimal, but their sum does not
+    booking_test_err(
+        r#"
+2024-01-01 * #apply
+  Assets:Account     70000000000000000000000000000 USD
+  Assets:Other       70000000000000000000000000000 USD
+  Income:Other
+"#,
+        Booking::Strict,
+        BookingError::Transaction(TransactionBookingError::Overflow),
     );
 }

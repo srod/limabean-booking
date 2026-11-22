@@ -1,10 +1,11 @@
+use super::TransactionBookingError;
 use hashbrown::HashMap;
 use std::{
     cmp::Ordering,
     fmt::{Debug, Display},
     hash::Hash,
-    iter::{Sum, repeat},
-    ops::{Add, AddAssign, Deref, Mul, Neg, Sub, SubAssign},
+    iter::repeat,
+    ops::{Deref, Neg},
 };
 use strum_macros::Display;
 
@@ -111,13 +112,19 @@ impl<B> Position<B>
 where
     B: BookingTypes,
 {
-    pub(crate) fn with_accumulated(&self, units: B::Number) -> Self {
+    pub(crate) fn with_accumulated(
+        &self,
+        units: B::Number,
+    ) -> Result<Self, TransactionBookingError> {
         let cost = self.cost.as_ref().cloned();
-        Position {
+        Ok(Position {
             currency: self.currency.clone(),
-            units: self.units + units,
+            units: self
+                .units
+                .checked_add(units)
+                .ok_or(TransactionBookingError::Overflow)?,
             cost,
-        }
+        })
     }
 }
 
@@ -427,21 +434,7 @@ pub type ToleranceNumber<T> = <<T as Tolerance>::Types as BookingTypes>::Number;
 pub type ToleranceCurrency<T> = <<T as Tolerance>::Types as BookingTypes>::Currency;
 
 /// The properties required for a decimal type to be usable for booking.
-pub trait Number:
-    Copy
-    + Add<Output = Self>
-    + AddAssign
-    + Sub<Output = Self>
-    + SubAssign
-    + Neg<Output = Self>
-    + Mul<Output = Self>
-    + Sum
-    + Eq
-    + Hash
-    + Ord
-    + Sized
-    + Default
-{
+pub trait Number: Copy + Neg<Output = Self> + Eq + Hash + Ord + Sized + Default {
     fn abs(&self) -> Self;
 
     // zero is neither positive nor negative
@@ -450,6 +443,12 @@ pub trait Number:
     fn zero() -> Self;
 
     fn new(m: i64, scale: u32) -> Self;
+
+    fn checked_add(self, other: Self) -> Option<Self>;
+
+    fn checked_sub(self, other: Self) -> Option<Self>;
+
+    fn checked_mul(self, other: Self) -> Option<Self>;
 
     fn checked_div(self, other: Self) -> Option<Self>;
 
@@ -515,19 +514,20 @@ where
         self.0.insert(i, element)
     }
 
-    pub fn units(&self) -> HashMap<&B::Currency, B::Number> {
+    pub fn units(&self) -> Result<HashMap<&B::Currency, B::Number>, TransactionBookingError> {
         let mut units_by_currency = HashMap::default();
         for Position {
             currency, units, ..
         } in &self.0
         {
-            if units_by_currency.contains_key(currency) {
-                *units_by_currency.get_mut(currency).unwrap() += *units;
+            if let Some(total) = units_by_currency.get_mut(currency) {
+                *total = B::Number::checked_add(*total, *units)
+                    .ok_or(TransactionBookingError::Overflow)?;
             } else {
                 units_by_currency.insert(currency, *units);
             }
         }
-        units_by_currency
+        Ok(units_by_currency)
     }
 
     pub fn accumulate(
@@ -536,7 +536,7 @@ where
         currency: B::Currency,
         cost: Option<Cost<B>>,
         method: Booking,
-    ) {
+    ) -> Result<(), TransactionBookingError> {
         use Ordering::*;
 
         let insertion_idx = match method {
@@ -573,11 +573,19 @@ where
         match (insertion_idx, cost) {
             (Ok(i), None) => {
                 let position = self.get_mut(i).unwrap();
-                position.units += units;
+                position.units = position
+                    .units
+                    .checked_add(units)
+                    .ok_or(TransactionBookingError::Overflow)?;
+                Ok(())
             }
             (Ok(i), Some(_cost)) => {
                 let position = self.get_mut(i).unwrap();
-                position.units += units;
+                position.units = position
+                    .units
+                    .checked_add(units)
+                    .ok_or(TransactionBookingError::Overflow)?;
+                Ok(())
             }
             (Err(i), None) => {
                 let position = Position {
@@ -585,7 +593,8 @@ where
                     currency,
                     cost: None,
                 };
-                self.insert(i, position)
+                self.insert(i, position);
+                Ok(())
             }
             (Err(i), Some(cost)) => {
                 let position = Position {
@@ -593,7 +602,8 @@ where
                     currency,
                     cost: Some(cost),
                 };
-                self.insert(i, position)
+                self.insert(i, position);
+                Ok(())
             }
         }
     }

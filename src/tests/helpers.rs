@@ -471,7 +471,9 @@ pub(crate) fn positions_test(
                     cost,
                 } in positions
                 {
-                    actual_positions.accumulate(units, currency, cost, method);
+                    actual_positions
+                        .accumulate(units, currency, cost, method)
+                        .unwrap();
                 }
 
                 let actual_positions = actual_positions

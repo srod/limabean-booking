@@ -31,8 +31,11 @@ where
     P: PostingSpec<Types = B> + Debug,
     T: Tolerance<Types = B>,
 {
-    let mut weights = costeds.iter().map(|c| c.weight()).collect::<Vec<_>>();
-    let mut residual = tolerance_residual(tolerance, weights.iter().filter_map(|w| *w), currency);
+    let mut weights = costeds
+        .iter()
+        .map(|c| c.weight())
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut residual = tolerance_residual(tolerance, weights.iter().filter_map(|w| *w), currency)?;
 
     let unknown = weights
         .iter()
@@ -93,7 +96,7 @@ where
             currency,
             annotated.currency.as_ref(),
             tolerance,
-        ),
+        )?,
         annotated.currency,
         annotated.posting.cost(),
         annotated.posting.price(),
@@ -245,7 +248,7 @@ fn units<B, P, T>(
     currency: &B::Currency,
     annotated_currency: Option<&B::Currency>,
     tolerance: &T,
-) -> Option<UnitsAndConversion<B::Number>>
+) -> Result<Option<UnitsAndConversion<B::Number>>, TransactionBookingError>
 where
     B: BookingTypes,
     P: PostingSpec<Types = B>,
@@ -263,10 +266,10 @@ where
     } else if let Some(price_spec) = posting.price() {
         units_from_price_spec(posting.units(), weight, price_spec, tolerance)
     } else {
-        posting.units().map(|units| UnitsAndConversion {
+        Ok(posting.units().map(|units| UnitsAndConversion {
             units,
             conversion: None,
-        })
+        }))
     }
 }
 
@@ -275,7 +278,7 @@ fn units_from_cost_spec<B, CS, T>(
     weight: B::Number,
     cost_spec: &CS,
     tolerance: &T,
-) -> Option<UnitsAndConversion<B::Number>>
+) -> Result<Option<UnitsAndConversion<B::Number>>, TransactionBookingError>
 where
     B: BookingTypes,
     CS: CostSpec<Types = B> + Debug,
@@ -290,29 +293,43 @@ where
     );
     match (posting_units, cost_spec.per_unit(), cost_spec.total()) {
         (Some(units), Some(per_unit), total) => {
-            let total = total.unwrap_or(units * per_unit);
-            Some(UnitsAndConversion {
+            let total = total_or_product(total, units, per_unit)?;
+            Ok(Some(UnitsAndConversion {
                 units,
                 conversion: Some(Conversion { per_unit, total }),
-            })
+            }))
         }
         (None, Some(per_unit), total) => {
             if let Some(units) = weight.checked_div(per_unit) {
                 let units = units.rescaled(weight.scale());
-                let total = total.unwrap_or(units * per_unit);
-                Some(UnitsAndConversion {
+                let total = total_or_product(total, units, per_unit)?;
+                Ok(Some(UnitsAndConversion {
                     units,
                     conversion: Some(Conversion { per_unit, total }),
-                })
+                }))
             } else {
-                None
+                Ok(None)
             }
         }
         (Some(units), None, Some(cost_total)) => {
             infer_per_unit::<B, T>(cost_total, units, tolerance)
         }
         (Some(units), None, None) => infer_per_unit::<B, T>(weight, units, tolerance),
-        (None, None, _) => None,
+        (None, None, _) => Ok(None),
+    }
+}
+
+// the total as specified, otherwise units times per-unit, which is only computed when needed
+fn total_or_product<N: Number>(
+    total: Option<N>,
+    units: N,
+    per_unit: N,
+) -> Result<N, TransactionBookingError> {
+    match total {
+        Some(total) => Ok(total),
+        None => units
+            .checked_mul(per_unit)
+            .ok_or(TransactionBookingError::Overflow),
     }
 }
 
@@ -321,7 +338,7 @@ fn units_from_price_spec<B, PS, T>(
     weight: B::Number,
     price_spec: &PS,
     tolerance: &T,
-) -> Option<UnitsAndConversion<B::Number>>
+) -> Result<Option<UnitsAndConversion<B::Number>>, TransactionBookingError>
 where
     B: BookingTypes,
     PS: PriceSpec<Types = B> + Debug,
@@ -329,29 +346,29 @@ where
 {
     match (posting_units, price_spec.per_unit(), price_spec.total()) {
         (Some(units), Some(per_unit), total) => {
-            let total = total.unwrap_or(units * per_unit);
-            Some(UnitsAndConversion {
+            let total = total_or_product(total, units, per_unit)?;
+            Ok(Some(UnitsAndConversion {
                 units,
                 conversion: Some(Conversion { per_unit, total }),
-            })
+            }))
         }
         (None, Some(per_unit), total) => {
             if let Some(units) = weight.checked_div(per_unit) {
                 let units = units.rescaled(weight.scale());
-                let total = total.unwrap_or(units * per_unit);
-                Some(UnitsAndConversion {
+                let total = total_or_product(total, units, per_unit)?;
+                Ok(Some(UnitsAndConversion {
                     units,
                     conversion: Some(Conversion { per_unit, total }),
-                })
+                }))
             } else {
-                None
+                Ok(None)
             }
         }
         (Some(units), None, Some(price_total)) => {
             infer_per_unit::<B, T>(price_total, units, tolerance)
         }
         (Some(units), None, None) => infer_per_unit::<B, T>(weight, units, tolerance),
-        (None, None, _) => None,
+        (None, None, _) => Ok(None),
     }
 }
 
@@ -359,15 +376,15 @@ fn infer_per_unit<B, T>(
     total: B::Number,
     units: B::Number,
     _tolerance: &T,
-) -> Option<UnitsAndConversion<B::Number>>
+) -> Result<Option<UnitsAndConversion<B::Number>>, TransactionBookingError>
 where
     B: BookingTypes,
     T: Tolerance<Types = B>,
 {
     let per_unit = total.checked_div(units);
     // TODO scale according to tolerance
-    Some(UnitsAndConversion {
+    Ok(Some(UnitsAndConversion {
         units,
         conversion: per_unit.map(|per_unit| Conversion { per_unit, total }),
-    })
+    }))
 }

@@ -12,6 +12,12 @@ pub enum BookingError {
     Posting(usize, PostingBookingError),
 }
 
+impl From<TransactionBookingError> for BookingError {
+    fn from(e: TransactionBookingError) -> Self {
+        BookingError::Transaction(e)
+    }
+}
+
 impl Display for BookingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use BookingError::*;
@@ -31,6 +37,7 @@ pub enum TransactionBookingError {
     Unbalanced(String),
     CannotDetermineCurrencyForBalancing,
     AutoPostMultipleBuckets(Vec<String>),
+    Overflow,
 }
 
 impl Display for TransactionBookingError {
@@ -51,6 +58,7 @@ impl Display for TransactionBookingError {
                 "can't have auto-post with multiple currencies {}",
                 buckets.join(","),
             ),
+            Overflow => f.write_str("arithmetic overflow, number too large"),
         }
     }
 }

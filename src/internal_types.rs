@@ -1,7 +1,9 @@
 use hashbrown::{HashMap, hash_map::Entry};
 use std::{fmt::Debug, hash::Hash, ops::Deref};
 
-use super::{BookingTypes, CostSpec, Interpolated, Number, PostingSpec, PriceSpec};
+use super::{
+    BookingTypes, CostSpec, Interpolated, Number, PostingSpec, PriceSpec, TransactionBookingError,
+};
 
 #[derive(Debug)]
 pub(crate) struct HashMapOfVec<K, V>(HashMap<K, Vec<V>>);
@@ -101,20 +103,25 @@ where
 {
     // determine the weight of a posting
     // https://beancount.github.io/docs/beancount_language_syntax.html#balancing-rule-the-weight-of-postings
-    pub(crate) fn weight(&self) -> Option<B::Number> {
+    pub(crate) fn weight(&self) -> Result<Option<B::Number>, TransactionBookingError> {
         use BookedOrUnbookedPosting::*;
 
-        match self {
+        Ok(match self {
             Booked(booked) => {
                 if let Some(costs) = &booked.cost {
-                    let weight = costs
-                        .adjustments
-                        .iter()
-                        .map(|adj| {
-                            (adj.units * adj.per_unit)
-                                .rescaled(sane_scale(adj.units.scale(), adj.per_unit.scale()))
-                        })
-                        .sum();
+                    let weight =
+                        costs
+                            .adjustments
+                            .iter()
+                            .try_fold(B::Number::zero(), |sum, adj| {
+                                let weight = adj
+                                    .units
+                                    .checked_mul(adj.per_unit)
+                                    .ok_or(TransactionBookingError::Overflow)?
+                                    .rescaled(sane_scale(adj.units.scale(), adj.per_unit.scale()));
+                                sum.checked_add(weight)
+                                    .ok_or(TransactionBookingError::Overflow)
+                            })?;
                     Some(weight)
                 } else {
                     Some(booked.units)
@@ -127,7 +134,9 @@ where
                     match (cost_spec.total(), cost_spec.per_unit(), p.units()) {
                         (Some(cost_total), _, _) => Some(cost_total),
                         (None, Some(cost_per_unit), Some(units)) => {
-                            let weight = (cost_per_unit * units)
+                            let weight = cost_per_unit
+                                .checked_mul(units)
+                                .ok_or(TransactionBookingError::Overflow)?
                                 .rescaled(sane_scale(units.scale(), cost_per_unit.scale()));
                             Some(weight)
                         }
@@ -137,7 +146,9 @@ where
                     match (price_spec.total(), price_spec.per_unit(), p.units()) {
                         (Some(price_total), _, _) => Some(price_total),
                         (None, Some(price_per_unit), Some(units)) => {
-                            let weight = (price_per_unit * units)
+                            let weight = price_per_unit
+                                .checked_mul(units)
+                                .ok_or(TransactionBookingError::Overflow)?
                                 .rescaled(sane_scale(units.scale(), price_per_unit.scale()));
                             Some(weight)
                         }
@@ -147,7 +158,7 @@ where
                     p.units()
                 }
             }
-        }
+        })
     }
 }
 

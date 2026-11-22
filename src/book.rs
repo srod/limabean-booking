@@ -272,7 +272,7 @@ where
                     interpolated.currency.clone(),
                     Some((cur, cost).into()),
                     account_method,
-                );
+                )?;
             }
         } else {
             previous_positions.accumulate(
@@ -280,7 +280,7 @@ where
                 interpolated.currency.clone(),
                 None,
                 account_method,
-            );
+            )?;
         }
     }
     Ok(updated_inventory.into())

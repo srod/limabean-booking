@@ -6,7 +6,7 @@ use crate::{BookingTypes, tolerance_residual};
 use super::{
     AnnotatedPosting, BookedOrUnbookedPosting, Booking, BookingError, Cost, CostSpec, Interpolated,
     Inventory, Number, Position, Positions, PostingBookingError, PostingCost, PostingCosts,
-    PostingSpec, Sign, Tolerance,
+    PostingSpec, Sign, Tolerance, TransactionBookingError,
 };
 
 #[derive(Debug)]
@@ -91,7 +91,9 @@ where
     {
         if !is_potential_reduction(posting_units, posting_currency, positions) {
             if posting_units.sign() == Some(Sign::Negative)
-                && !positions.iter().any(|pos| &pos.currency == posting_currency)
+                && !positions
+                    .iter()
+                    .any(|pos| &pos.currency == posting_currency)
             {
                 // Reduction attempt against a currency completely depleted by earlier postings
                 // in the same transaction — the lot the user referenced does not exist.
@@ -134,7 +136,7 @@ where
             positions,
             &matched,
             tolerance,
-        ) {
+        )? {
             let (reducing_posting, updated_positions) = reduce_all_sold_at_cost(
                 posting_units,
                 posting_currency,
@@ -231,13 +233,17 @@ where
                 .enumerate()
                 .filter_map(|(i, pos)| {
                     if i == matched_position_idx {
-                        let updated_pos = pos.with_accumulated(posting_units);
-                        (updated_pos.units != Number::zero()).then_some(updated_pos)
+                        match pos.with_accumulated(posting_units) {
+                            Ok(updated_pos) => {
+                                (updated_pos.units != Number::zero()).then_some(Ok(updated_pos))
+                            }
+                            Err(e) => Some(Err(e)),
+                        }
                     } else {
-                        Some(pos.clone())
+                        Some(Ok(pos.clone()))
                     }
                 })
-                .collect::<Vec<_>>(),
+                .collect::<Result<Vec<_>, _>>()?,
         );
 
         Ok((
@@ -272,7 +278,7 @@ fn is_sell_all_at_cost<B, T>(
     positions: &Positions<B>,
     matched: &[usize],
     tolerance: &T,
-) -> bool
+) -> Result<bool, TransactionBookingError>
 where
     B: BookingTypes,
     T: Tolerance<Types = B>,
@@ -284,8 +290,8 @@ where
             .map(|i| positions[*i].units)
             .chain(once(posting_units)),
         posting_currency,
-    );
-    tol.is_none()
+    )?;
+    Ok(tol.is_none())
 }
 
 fn reduce_multiple_positions<'a, 'p, B, P>(
@@ -398,8 +404,12 @@ where
             -updated_position_units[*i]
         };
 
-        updated_position_units[*i] += consumed;
-        remaining_units -= consumed;
+        updated_position_units[*i] = updated_position_units[*i]
+            .checked_add(consumed)
+            .ok_or(TransactionBookingError::Overflow)?;
+        remaining_units = remaining_units
+            .checked_sub(consumed)
+            .ok_or(TransactionBookingError::Overflow)?;
 
         adjustments.push(PostingCost {
             date: cost_i.date,
@@ -462,7 +472,10 @@ fn check_sufficient_matched_units<B>(
 where
     B: BookingTypes,
 {
-    let total_matched_units: B::Number = matched.iter().map(|i| positions[*i].units).sum();
+    let total_matched_units = matched.iter().try_fold(B::Number::zero(), |sum, i| {
+        sum.checked_add(positions[*i].units)
+            .ok_or(TransactionBookingError::Overflow)
+    })?;
 
     if posting_units <= total_matched_units {
         Ok(())
